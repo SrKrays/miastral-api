@@ -1,5 +1,4 @@
-﻿using bruzz_api.Models;
-using miastral_api.Data;
+﻿using miastral_api.Data;
 using miastral_api.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +29,7 @@ namespace miastral_api.Controllers
             var usuario = await _db.Usuarios
                 .FirstOrDefaultAsync(u => u.Email == request.Email && u.Activo);
 
-            if (usuario == null || !BCrypt.Net.BCrypt.Verify(request.Password, usuario.PasswordHash))
+            if (usuario == null || usuario.PasswordHash == null || !BCrypt.Net.BCrypt.Verify(request.Password, usuario.PasswordHash))
                 return Unauthorized(new { message = "Email o contraseña incorrectos" });
 
             usuario.LastLogin = DateTime.Now;
@@ -50,6 +49,7 @@ namespace miastral_api.Controllers
             var usuario = new Usuario
             {
                 Nombre = request.Nombre,
+                Apellido = request.Apellido,
                 Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
                 Telefono = request.Telefono ?? "",
@@ -153,6 +153,7 @@ namespace miastral_api.Controllers
     public class RegistroRequest
     {
         public string Nombre { get; set; } = "";
+        public string Apellido { get; set; } = "";
         public string Email { get; set; } = "";
         public string Password { get; set; } = "";
         public string? Telefono { get; set; }

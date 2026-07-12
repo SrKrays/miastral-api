@@ -1,4 +1,3 @@
-using bruzz_api.Models;
 using miastral_api.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,12 +30,16 @@ namespace miastral_api.Data
                 e.ToTable("usuarios");
                 e.Property(x => x.Id).HasColumnName("id");
                 e.Property(x => x.Nombre).HasColumnName("nombre");
+                e.Property(x => x.Apellido).HasColumnName("apellido");
                 e.Property(x => x.Email).HasColumnName("email");
                 e.Property(x => x.PasswordHash).HasColumnName("password_hash");
+                e.Property(x => x.GoogleId).HasColumnName("google_id");
                 e.Property(x => x.Telefono).HasColumnName("telefono");
                 e.Property(x => x.Activo).HasColumnName("activo");
                 e.Property(x => x.CreatedAt).HasColumnName("created_at");
                 e.Property(x => x.LastLogin).HasColumnName("last_login");
+                e.HasIndex(x => x.Email).IsUnique();
+                e.HasIndex(x => x.GoogleId).IsUnique();
             });
 
             modelBuilder.Entity<Producto>(e => {
@@ -44,7 +47,14 @@ namespace miastral_api.Data
                 e.Property(x => x.Id).HasColumnName("id");
                 e.Property(x => x.Nombre).HasColumnName("nombre");
                 e.Property(x => x.Descripcion).HasColumnName("descripcion");
+                e.Property(x => x.DescripcionCompleta).HasColumnName("descripcion_completa");
                 e.Property(x => x.Precio).HasColumnName("precio");
+                e.Property(x => x.PrecioUSD).HasColumnName("precio_usd");
+                e.Property(x => x.Sena).HasColumnName("sena");
+                e.Property(x => x.Duracion).HasColumnName("duracion");
+                e.Property(x => x.Modalidad).HasColumnName("modalidad");
+                e.Property(x => x.Incluye).HasColumnName("incluye");
+                e.Property(x => x.RequiereDatosNacimiento).HasColumnName("requiere_datos_nacimiento");
                 e.Property(x => x.Stock).HasColumnName("stock");
                 e.Property(x => x.Tipo).HasColumnName("tipo");
                 e.Property(x => x.ImageUrl).HasColumnName("image_url");
@@ -70,8 +80,8 @@ namespace miastral_api.Data
                 e.Property(x => x.EnvioCiudad).HasColumnName("envio_ciudad");
                 e.Property(x => x.EnvioProvincia).HasColumnName("envio_provincia");
                 e.Property(x => x.EnvioCP).HasColumnName("envio_cp");
-                e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId);
-                e.HasMany(x => x.Items).WithOne(x => x.Orden).HasForeignKey(x => x.OrdenId);
+                e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+                e.HasMany(x => x.Items).WithOne(x => x.Orden).HasForeignKey(x => x.OrdenId).OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<OrdenItem>(e => {
@@ -81,7 +91,7 @@ namespace miastral_api.Data
                 e.Property(x => x.ProductoId).HasColumnName("producto_id");
                 e.Property(x => x.Cantidad).HasColumnName("cantidad");
                 e.Property(x => x.PrecioUnitario).HasColumnName("precio_unitario");
-                e.HasOne(x => x.Producto).WithMany().HasForeignKey(x => x.ProductoId);
+                e.HasOne(x => x.Producto).WithMany().HasForeignKey(x => x.ProductoId).OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

@@ -1,4 +1,4 @@
-﻿namespace bruzz_api.Models
+﻿namespace miastral_api.Models
 {
     public class Admin
     {
