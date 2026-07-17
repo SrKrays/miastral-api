@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
+using MercadoPago.Config;
 using miastral_api.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +34,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+
+// ── MercadoPago ──────────────────────────────────────────────
+// El AccessToken es global/estático en el SDK, alcanza con setearlo una vez acá.
+// Sale vacío en appsettings.json (el archivo público) — la clave real viene de
+// appsettings.Development.json (gitignored) en local, o de la env var
+// MercadoPago__AccessToken en Render en producción, igual que la clave JWT.
+MercadoPagoConfig.AccessToken = builder.Configuration["MercadoPago:AccessToken"];
 
 // ── CORS ─────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
