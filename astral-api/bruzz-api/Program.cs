@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json.Serialization;
 using miastral_api.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -47,7 +48,15 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddControllers();
+// ReferenceHandler.IgnoreCycles: Orden.Items <-> OrdenItem.Orden es una relación
+// bidireccional — EF hace "fixup" automático de la navegación inversa al cargar
+// o agregar entidades relacionadas, y sin esto System.Text.Json revienta con
+// "A possible object cycle was detected" al serializar cualquier Orden con Items.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 
 // ── Swagger (documentación interactiva, solo se activa en Development) ──
 builder.Services.AddEndpointsApiExplorer();
