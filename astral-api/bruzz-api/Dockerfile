@@ -16,7 +16,6 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-# Render asigna el puerto vía variable de entorno PORT
-ENV ASPNETCORE_URLS=http://+:${PORT:-8080}
-
-ENTRYPOINT ["dotnet", "bruzz-api.dll"]
+# Render asigna el puerto vía la variable de entorno PORT en runtime (no en build,
+# por eso no puede ir en ENV directo: se resuelve recién al arrancar el contenedor).
+ENTRYPOINT ["/bin/sh", "-c", "ASPNETCORE_URLS=http://+:${PORT:-8080} dotnet miastral-api.dll"]
