@@ -106,6 +106,58 @@ namespace miastral_api.Controllers
             return CreatedAtAction(nameof(GetById), new { id = orden.Id }, orden);
         }
 
+        // GET api/ordenes — TODAS las órdenes, solo admin (panel de Vale).
+        // Proyectamos a mano en vez de devolver el Usuario completo: la entidad
+        // Usuario trae PasswordHash y no queremos que eso viaje en la respuesta.
+        [HttpGet]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> GetAllAdmin()
+        {
+            var ordenes = await _db.Ordenes
+                .Include(o => o.Items).ThenInclude(i => i.Producto)
+                .Include(o => o.Usuario)
+                .OrderByDescending(o => o.FechaCreacion)
+                .Select(o => new
+                {
+                    o.Id,
+                    o.FechaCreacion,
+                    o.Estado,
+                    o.Total,
+                    o.MetodoPago,
+                    o.MpPaymentId,
+                    o.EnvioNombre,
+                    o.EnvioEmail,
+                    o.EnvioTelefono,
+                    o.EnvioCalle,
+                    o.EnvioCiudad,
+                    o.EnvioProvincia,
+                    o.EnvioCP,
+                    Comprador = o.Usuario == null ? null : new { o.Usuario.Nombre, o.Usuario.Apellido, o.Usuario.Email },
+                    Items = o.Items.Select(i => new { i.Id, i.ProductoId, i.Cantidad, i.PrecioUnitario, ProductoNombre = i.Producto != null ? i.Producto.Nombre : null }),
+                })
+                .ToListAsync();
+
+            return Ok(ordenes);
+        }
+
+        // PUT api/ordenes/5/estado — solo admin. Para marcar "enviado", corregir a mano, etc.
+        [HttpPut("{id}/estado")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> UpdateEstado(int id, [FromBody] ActualizarEstadoRequest request)
+        {
+            var estadosValidos = new[] { "pendiente", "pagado", "enviado", "cancelado" };
+            if (!estadosValidos.Contains(request.Estado))
+                return BadRequest(new { message = "Estado inválido" });
+
+            var orden = await _db.Ordenes.FindAsync(id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+
+            orden.Estado = request.Estado;
+            await _db.SaveChangesAsync();
+
+            return Ok(orden);
+        }
+
         // GET api/ordenes/mis-ordenes — historial del usuario logueado (para "Mi cuenta")
         [HttpGet("mis-ordenes")]
         public async Task<IActionResult> GetMisOrdenes()
@@ -155,5 +207,10 @@ namespace miastral_api.Controllers
         public string? Ciudad { get; set; }
         public string? Provincia { get; set; }
         public string? Cp { get; set; }
+    }
+
+    public class ActualizarEstadoRequest
+    {
+        public string Estado { get; set; } = "";
     }
 }

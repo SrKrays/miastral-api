@@ -31,6 +31,16 @@ namespace miastral_api.Controllers
             return Ok(productos);
         }
 
+        // GET api/productos/admin — solo admin. Trae TODO (activos e inactivos),
+        // para que Vale pueda reactivar algo que se dio de baja por error.
+        [HttpGet("admin")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> GetAllAdmin()
+        {
+            var productos = await _db.Productos.OrderBy(p => p.Orden).ToListAsync();
+            return Ok(productos);
+        }
+
         // GET api/productos/5 — público
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
@@ -73,6 +83,10 @@ namespace miastral_api.Controllers
             existente.Incluye = producto.Incluye;
             existente.RequiereDatosNacimiento = producto.RequiereDatosNacimiento;
             existente.Stock = producto.Stock;
+            existente.PesoGramos = producto.PesoGramos;
+            existente.AltoCm = producto.AltoCm;
+            existente.AnchoCm = producto.AnchoCm;
+            existente.LargoCm = producto.LargoCm;
             existente.Tipo = producto.Tipo;
             existente.ImageUrl = producto.ImageUrl;
             existente.Tag = producto.Tag;

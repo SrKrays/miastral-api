@@ -56,6 +56,10 @@ namespace miastral_api.Data
                 e.Property(x => x.Incluye).HasColumnName("incluye");
                 e.Property(x => x.RequiereDatosNacimiento).HasColumnName("requiere_datos_nacimiento");
                 e.Property(x => x.Stock).HasColumnName("stock");
+                e.Property(x => x.PesoGramos).HasColumnName("peso_gramos");
+                e.Property(x => x.AltoCm).HasColumnName("alto_cm");
+                e.Property(x => x.AnchoCm).HasColumnName("ancho_cm");
+                e.Property(x => x.LargoCm).HasColumnName("largo_cm");
                 e.Property(x => x.Tipo).HasColumnName("tipo");
                 e.Property(x => x.ImageUrl).HasColumnName("image_url");
                 e.Property(x => x.Tag).HasColumnName("tag");
