@@ -21,6 +21,11 @@ var jwtKey = builder.Configuration["Jwt:Key"]!;
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Sin esto, las versiones nuevas del validador de JWT no traducen el
+        // claim corto "role" al tipo completo que usa [Authorize(Roles=...)]
+        // para comparar. Resultado: el token es válido, pero el chequeo de rol
+        // "admin" siempre falla con 403, aunque el usuario sí sea admin.
+        options.MapInboundClaims = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -100,6 +105,24 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(); // disponible en /swagger
+}
+else
+{
+    // Sin esto, cualquier excepción no manejada en producción devuelve una
+    // respuesta vacía (sin body) y sin mensaje — así fue muy difícil detectar
+    // el bug de la columna alto_cm faltante. Con este handler, cualquier error
+    // futuro va a devolver un JSON con el mensaje real, visible en el panel.
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+            var mensaje = feature?.Error?.Message ?? "Error interno del servidor";
+            await context.Response.WriteAsJsonAsync(new { message = $"Error interno: {mensaje}" });
+        });
+    });
 }
 
 app.UseCors("MiastralPolicy");
