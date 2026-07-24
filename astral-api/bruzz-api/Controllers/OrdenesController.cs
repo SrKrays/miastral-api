@@ -171,6 +171,22 @@ namespace miastral_api.Controllers
             return Ok(ordenes);
         }
 
+        // DELETE api/ordenes/5 — solo admin. Borrado real (no soft-delete): para
+        // sacar de encima órdenes de prueba que no van a ningún lado. Los
+        // orden_items se borran solos por el Cascade configurado en el DbContext.
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var orden = await _db.Ordenes.FindAsync(id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+
+            _db.Ordenes.Remove(orden);
+            await _db.SaveChangesAsync();
+
+            return NoContent();
+        }
+
         // GET api/ordenes/5 — el dueño de la orden, o un admin
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)

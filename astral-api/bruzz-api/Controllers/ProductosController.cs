@@ -112,5 +112,31 @@ namespace miastral_api.Controllers
 
             return NoContent();
         }
+
+        // DELETE api/productos/5/permanente — solo admin. Borrado real, para sacar
+        // de encima productos de prueba (ej. "Prueba", "Producto de prueba") que
+        // nunca tuvieron una compra real asociada.
+        // Si el producto ya tiene orden_items (compras reales), la base rechaza el
+        // borrado por la relación protegida (Restrict) — en ese caso devolvemos un
+        // mensaje claro en vez de un 500 pelado, y hay que desactivarlo en cambio.
+        [HttpDelete("{id}/permanente")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> DeletePermanente(int id)
+        {
+            var producto = await _db.Productos.FindAsync(id);
+            if (producto == null) return NotFound(new { message = "Producto no encontrado" });
+
+            _db.Productos.Remove(producto);
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(new { message = "Este producto ya tiene pedidos asociados y no se puede eliminar del todo. Desactivalo en cambio." });
+            }
+
+            return NoContent();
+        }
     }
 }
