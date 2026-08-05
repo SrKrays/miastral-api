@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using MercadoPago.Config;
 using miastral_api.Data;
+using miastral_api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +41,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+// ── Subida de imágenes a Ferozo/DonWeb por FTP ──────────────────
+builder.Services.AddScoped<FerozoUploadService>();
+
 // ── MercadoPago ──────────────────────────────────────────────
 // El AccessToken es global/estático en el SDK, alcanza con setearlo una vez acá.
 // Sale vacío en appsettings.json (el archivo público) — la clave real viene de
@@ -54,6 +58,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "https://miastral.vercel.app",
+            "https://byvalentinam.com",
+            "https://www.byvalentinam.com",
             "http://localhost:5173"
         )
         .AllowAnyHeader()
