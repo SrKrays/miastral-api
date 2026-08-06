@@ -126,16 +126,39 @@ var origenesPermitidos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 app.Use(async (context, next) =>
 {
     var origin = context.Request.Headers.Origin.ToString();
-    if (!string.IsNullOrEmpty(origin) && origenesPermitidos.Contains(origin))
+    var permitido = !string.IsNullOrEmpty(origin) && origenesPermitidos.Contains(origin);
+
+    // OnStarting corre justo antes de que Kestrel mande los headers — es el
+    // último punto posible para tocarlos, así nadie (ni un proxy intermedio
+    // reusando una respuesta cacheada) los pisa después. También forzamos
+    // no-store: sospechamos que el proxy de Cloudflare delante de Render
+    // estaba sirviendo una respuesta cacheada de OTRO origen (ej: Vercel)
+    // a los pedidos de byvalentinam.com, porque nuestra respuesta no traía
+    // ningún header que le dijera "esto varía según el origen, no cachear".
+    context.Response.OnStarting(() =>
     {
-        context.Response.Headers["Access-Control-Allow-Origin"] = origin;
-        context.Response.Headers["Access-Control-Allow-Headers"] = "*";
-        context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
-        context.Response.Headers["Vary"] = "Origin";
-    }
+        context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        context.Response.Headers["Pragma"] = "no-cache";
+        if (permitido)
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Headers"] = "*";
+            context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
+            context.Response.Headers["Vary"] = "Origin";
+        }
+        return Task.CompletedTask;
+    });
 
     if (HttpMethods.IsOptions(context.Request.Method))
     {
+        if (permitido)
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Headers"] = "*";
+            context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
+            context.Response.Headers["Vary"] = "Origin";
+        }
+        context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
         context.Response.StatusCode = StatusCodes.Status204NoContent;
         await context.Response.CompleteAsync();
         return;
