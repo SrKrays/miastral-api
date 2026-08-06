@@ -107,6 +107,43 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Fallback manual de CORS — va primero, antes que cualquier otra cosa, para
+// que el header se agregue siempre pase lo que pase más adelante en el
+// pipeline (incluso si el exception handler intercepta algo). Lo agregamos
+// porque en producción (Render, detrás de su proxy Cloudflare) se vieron
+// respuestas sin el header Access-Control-Allow-Origin pese a que el origen
+// estaba en la whitelist y app.UseCors() de por sí debería haberlo agregado.
+// Esto fuerza el header a mano y contesta el preflight OPTIONS directo, sin
+// depender de que UseCors lo resuelva correctamente en ese entorno.
+var origenesPermitidos = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "https://miastral.vercel.app",
+    "https://byvalentinam.com",
+    "https://www.byvalentinam.com",
+    "http://localhost:5173",
+};
+
+app.Use(async (context, next) =>
+{
+    var origin = context.Request.Headers.Origin.ToString();
+    if (!string.IsNullOrEmpty(origin) && origenesPermitidos.Contains(origin))
+    {
+        context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+        context.Response.Headers["Access-Control-Allow-Headers"] = "*";
+        context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
+        context.Response.Headers["Vary"] = "Origin";
+    }
+
+    if (HttpMethods.IsOptions(context.Request.Method))
+    {
+        context.Response.StatusCode = StatusCodes.Status204NoContent;
+        await context.Response.CompleteAsync();
+        return;
+    }
+
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
