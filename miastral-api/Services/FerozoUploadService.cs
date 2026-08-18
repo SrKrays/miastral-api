@@ -55,5 +55,68 @@ namespace miastral_api.Services
                 if (client.IsConnected) await client.Disconnect();
             }
         }
+
+        // Descarga un archivo de texto (usado para leer contenido.json, el índice
+        // de imágenes/videos "editables" del sitio). Devuelve null si no existe
+        // todavía o si hay algún error — el que llama trata null como "vacío".
+        public async Task<string?> DescargarTextoAsync(string rutaRemota)
+        {
+            var host = _config["Ferozo:Host"];
+            var user = _config["Ferozo:Username"];
+            var pass = _config["Ferozo:Password"];
+            if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+                return null;
+
+            using var client = new AsyncFtpClient(host, user, pass);
+            try
+            {
+                await client.AutoConnect();
+                if (!await client.FileExists(rutaRemota)) return null;
+
+                using var ms = new MemoryStream();
+                var ok = await client.DownloadStream(ms, rutaRemota);
+                if (!ok) return null;
+
+                ms.Position = 0;
+                using var reader = new StreamReader(ms);
+                return await reader.ReadToEndAsync();
+            }
+            catch
+            {
+                return null;
+            }
+            finally
+            {
+                if (client.IsConnected) await client.Disconnect();
+            }
+        }
+
+        // Sube/pisa un archivo de texto plano (contenido.json).
+        public async Task<bool> SubirTextoAsync(string rutaRemota, string contenido)
+        {
+            var host = _config["Ferozo:Host"];
+            var user = _config["Ferozo:Username"];
+            var pass = _config["Ferozo:Password"];
+            if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+                return false;
+
+            using var client = new AsyncFtpClient(host, user, pass);
+            try
+            {
+                await client.AutoConnect();
+                var bytes = System.Text.Encoding.UTF8.GetBytes(contenido);
+                using var ms = new MemoryStream(bytes);
+                var status = await client.UploadStream(ms, rutaRemota, FtpRemoteExists.Overwrite, createRemoteDir: true);
+                return status == FtpStatus.Success;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (client.IsConnected) await client.Disconnect();
+            }
+        }
     }
 }
