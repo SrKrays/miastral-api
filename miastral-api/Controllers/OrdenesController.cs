@@ -158,6 +158,22 @@ namespace miastral_api.Controllers
             return Ok(orden);
         }
 
+        // DELETE api/ordenes/5 — solo admin. Borrado real, para sacar pedidos de
+        // prueba. Se lleva puestos los orden_items (cascade), no afecta el stock
+        // ni ningún otro dato — es una limpieza, no una devolución.
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> Eliminar(int id)
+        {
+            var orden = await _db.Ordenes.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+
+            _db.Ordenes.Remove(orden);
+            await _db.SaveChangesAsync();
+
+            return NoContent();
+        }
+
         // GET api/ordenes/mis-ordenes — historial del usuario logueado (para "Mi cuenta")
         [HttpGet("mis-ordenes")]
         public async Task<IActionResult> GetMisOrdenes()
