@@ -97,9 +97,7 @@ namespace miastral_api.Controllers
             return Ok(existente);
         }
 
-        // DELETE api/productos/5 — solo admin.
-        // Soft delete (Activo = false): nunca se borra físicamente porque puede haber
-        // orden_items de compras pasadas apuntando a este producto.
+        // DELETE api/productos/5 — solo admin. Baja lógica (Activo = false).
         [HttpDelete("{id}")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> Delete(int id)
@@ -113,10 +111,7 @@ namespace miastral_api.Controllers
             return NoContent();
         }
 
-        // DELETE api/productos/5/permanente — solo admin.
-        // Borrado real, para sacar productos de prueba que no van a ningún lado.
-        // Si el producto ya tiene pedidos asociados (orden_items), lo rechazamos
-        // con un mensaje claro en vez de romper la integridad de esas órdenes.
+        // DELETE api/productos/5/permanente — solo admin. Borrado real.
         [HttpDelete("{id}/permanente")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> EliminarPermanente(int id)

@@ -26,13 +26,8 @@ namespace miastral_api.Controllers
             User.IsInRole("admin");
 
         // POST api/ordenes — crea una orden "pendiente" a partir del carrito.
-        // El precio y el stock se validan siempre contra la BD, nunca contra lo que
-        // mande el cliente (evita que alguien manipule el total desde el navegador).
-        //
-        // Importante: todavía no descontamos stock acá. El stock se descuenta recién
-        // cuando la orden pasa a "pagado" (Fase 3, webhook de MercadoPago) — si
-        // descontáramos ahora, un carrito abandonado sin pagar dejaría el producto
-        // reservado para siempre.
+        // El precio y el stock se calculan siempre contra la base de datos.
+        // El stock se descuenta recién cuando la orden pasa a "pagado".
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CrearOrdenRequest request)
         {
@@ -106,9 +101,7 @@ namespace miastral_api.Controllers
             return CreatedAtAction(nameof(GetById), new { id = orden.Id }, orden);
         }
 
-        // GET api/ordenes — TODAS las órdenes, solo admin (panel de Vale).
-        // Proyectamos a mano en vez de devolver el Usuario completo: la entidad
-        // Usuario trae PasswordHash y no queremos que eso viaje en la respuesta.
+        // GET api/ordenes — todas las órdenes, solo admin (panel de Vale).
         [HttpGet]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAllAdmin()
@@ -158,9 +151,7 @@ namespace miastral_api.Controllers
             return Ok(orden);
         }
 
-        // DELETE api/ordenes/5 — solo admin. Borrado real, para sacar pedidos de
-        // prueba. Se lleva puestos los orden_items (cascade), no afecta el stock
-        // ni ningún otro dato — es una limpieza, no una devolución.
+        // DELETE api/ordenes/5 — solo admin. Borrado real de la orden.
         [HttpDelete("{id}")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> Eliminar(int id)

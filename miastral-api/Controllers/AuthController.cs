@@ -1,16 +1,20 @@
 ﻿using miastral_api.Data;
 using miastral_api.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 
 namespace miastral_api.Controllers
 {
+    // Login, registro y alta de administrador.
     [ApiController]
     [Route("api/[controller]")]
+    [EnableRateLimiting("Auth")]
     public class AuthController : ControllerBase
     {
         private readonly MiastralContext _db;
@@ -44,7 +48,7 @@ namespace miastral_api.Controllers
         public async Task<IActionResult> Registro([FromBody] RegistroRequest request)
         {
             if (await _db.Usuarios.AnyAsync(u => u.Email == request.Email))
-                return BadRequest(new { message = "Ya existe una cuenta con ese email" });
+                return BadRequest(new { message = "No pudimos completar el registro con esos datos." });
 
             var usuario = new Usuario
             {
@@ -81,10 +85,17 @@ namespace miastral_api.Controllers
             return Ok(new { token, nombre = admin.Nombre });
         }
 
-        // POST api/auth/setup — crear primer admin (usar una sola vez)
+        // POST api/auth/setup — crea el primer admin
         [HttpPost("setup")]
         public async Task<IActionResult> Setup([FromBody] SetupRequest request)
         {
+            var claveConfigurada = _config["Setup:Clave"];
+            if (string.IsNullOrEmpty(claveConfigurada))
+                return NotFound();
+
+            if (!Request.Headers.TryGetValue("X-Setup-Key", out var claveRecibida) || claveRecibida != claveConfigurada)
+                return Unauthorized(new { message = "No autorizado" });
+
             if (await _db.Admins.AnyAsync())
                 return BadRequest(new { message = "Ya existe un administrador" });
 
@@ -136,7 +147,7 @@ namespace miastral_api.Controllers
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.Now.AddHours(8),
+                expires: DateTime.UtcNow.AddHours(8),
                 signingCredentials: creds
             );
 
@@ -152,17 +163,19 @@ namespace miastral_api.Controllers
 
     public class RegistroRequest
     {
-        public string Nombre { get; set; } = "";
-        public string Apellido { get; set; } = "";
-        public string Email { get; set; } = "";
+        [Required] public string Nombre { get; set; } = "";
+        [Required] public string Apellido { get; set; } = "";
+        [Required, EmailAddress] public string Email { get; set; } = "";
+        [Required, MinLength(8, ErrorMessage = "La contraseña debe tener al menos 8 caracteres.")]
         public string Password { get; set; } = "";
         public string? Telefono { get; set; }
     }
 
     public class SetupRequest
     {
-        public string Email { get; set; } = "";
+        [Required, EmailAddress] public string Email { get; set; } = "";
+        [Required, MinLength(8, ErrorMessage = "La contraseña debe tener al menos 8 caracteres.")]
         public string Password { get; set; } = "";
-        public string Nombre { get; set; } = "";
+        [Required] public string Nombre { get; set; } = "";
     }
 }

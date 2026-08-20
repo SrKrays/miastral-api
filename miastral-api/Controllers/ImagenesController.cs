@@ -34,6 +34,9 @@ namespace miastral_api.Controllers
             if (!ExtensionesPermitidas.Contains(ext))
                 return BadRequest(new { message = "Formato no soportado. Usá JPG, PNG, WEBP o GIF." });
 
+            if (!await ValidacionArchivos.EsImagenValida(archivo))
+                return BadRequest(new { message = "El archivo no es una imagen válida." });
+
             var (ok, resultado) = await _uploadService.SubirAsync(archivo);
             if (!ok)
                 return StatusCode(502, new { message = resultado });

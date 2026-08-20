@@ -5,18 +5,10 @@ using miastral_api.Services;
 
 namespace miastral_api.Controllers
 {
-    // Maneja el "contenido editable" del sitio: fotos, links de YouTube y textos
-    // cortos que hoy están hardcodeados en el frontend (Sobre mí, Diseño Humano,
-    // Bienestar, Material Gratuito, el video de bienvenida del Home, etc.) y que
-    // Vale va a poder reemplazar sola desde el panel admin, sin depender de que
-    // alguien le toque código.
-    //
-    // No usa la base de datos — guarda un solo archivo contenido.json en el
-    // hosting de Ferozo (mismo FTP que ya se usa para las fotos de producto)
-    // con el mapa { clave: valor }. El valor puede ser una URL de imagen, un
-    // link de YouTube o un texto corto (título/descripción de una card). El
-    // frontend lo lee público, sin login, y si una clave no está, usa su
-    // valor por defecto (el que ya tenía hardcodeado).
+    // Contenido editable del sitio: fotos, links de YouTube y textos cortos de
+    // cada sección (Sobre mí, Diseño Humano, Bienestar, Material Gratuito,
+    // Inicio). Se guarda como un mapa { clave: valor } en contenido.json,
+    // en el mismo hosting de Ferozo que las fotos de producto.
     [ApiController]
     [Route("api/[controller]")]
     public class ContenidoController : ControllerBase
@@ -66,6 +58,9 @@ namespace miastral_api.Controllers
 
             if (archivo.Length > TamañoMaximoImagen)
                 return BadRequest(new { message = "La imagen no puede pesar más de 8 MB." });
+
+            if (!await ValidacionArchivos.EsImagenValida(archivo))
+                return BadRequest(new { message = "El archivo no es una imagen válida." });
 
             var (ok, resultado) = await _uploadService.SubirAsync(archivo);
             if (!ok) return StatusCode(502, new { message = resultado });

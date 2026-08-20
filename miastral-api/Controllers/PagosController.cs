@@ -73,16 +73,9 @@ namespace miastral_api.Controllers
             return Ok(new { initPoint = preference.InitPoint, preferenceId = preference.Id });
         }
 
-        // POST api/pagos/webhook — Mercado Pago llama acá cuando se crea o actualiza un pago.
-        //
-        // Es público (MP no manda nuestro JWT). Por eso nunca confiamos en los datos que
-        // vienen en la notificación en sí — solo usamos el id de pago que nos avisan para
-        // volver a pedirle el estado real a la API de MP con nuestro propio access token,
-        // y recién ahí actualizamos la orden.
-        //
-        // MP puede mandar el aviso como query params (?type=payment&data.id=123) o como
-        // body JSON ({"type":"payment","data":{"id":"123"}}) según cómo se haya configurado
-        // — contemplamos las dos formas.
+        // POST api/pagos/webhook — MercadoPago llama acá cuando se crea o
+        // actualiza un pago. Con el id que llega, se vuelve a consultar el
+        // estado real a la API de MercadoPago y se actualiza la orden.
         [HttpPost("webhook")]
         [AllowAnonymous]
         public async Task<IActionResult> Webhook(
@@ -106,9 +99,6 @@ namespace miastral_api.Controllers
             }
             catch
             {
-                // Si MP todavía no tiene el pago disponible o hay un hiccup de red,
-                // devolvemos 200 igual: MP reintenta solo cada 15 min si no confirmamos,
-                // y no queremos generar reintentos infinitos por un error transitorio.
                 return Ok();
             }
 
