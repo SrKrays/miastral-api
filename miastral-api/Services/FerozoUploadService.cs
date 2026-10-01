@@ -40,6 +40,7 @@ namespace miastral_api.Services
             var rutaRemota = $"{remoteDir.TrimEnd('/')}/{nombreArchivo}";
 
             using var client = new AsyncFtpClient(host, user, pass);
+            client.Config.ConnectTimeout = 10000;
             try
             {
                 await client.AutoConnect();
@@ -108,12 +109,13 @@ namespace miastral_api.Services
         }
 
         // Descarga un archivo de texto (usado para leer contenido.json, el índice
-        // de imágenes/videos "editables" del sitio). Reintenta un par de veces
-        // ante fallos de conexión transitorios (típico justo después de que
-        // Render reinicia el servicio) y, si aun así falla, devuelve la última
-        // copia buena que se haya leído con éxito en este proceso, en vez de
-        // vaciar la web. Solo devuelve null si el archivo realmente no existe
-        // todavía o si nunca se pudo leer.
+        // de imágenes/videos "editables" del sitio). Reintenta varias veces ante
+        // fallos de conexión transitorios (típico justo después de que Render
+        // "despierta" el servicio tras estar inactivo) y, si aun así falla,
+        // devuelve la última copia buena que se haya leído con éxito en este
+        // proceso, en vez de vaciar la web. Un "no existe" también se reintenta
+        // — un hiccup de conexión puede hacer que el chequeo dé falso negativo,
+        // y un archivo que existía ayer no desaparece solo.
         public async Task<string?> DescargarTextoAsync(string rutaRemota)
         {
             var host = _config["Ferozo:Host"];
@@ -122,14 +124,20 @@ namespace miastral_api.Services
             if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
                 return _ultimaCopiaBuena.GetValueOrDefault(rutaRemota);
 
-            const int intentosMaximos = 3;
+            const int intentosMaximos = 4;
             for (var intento = 1; intento <= intentosMaximos; intento++)
             {
                 using var client = new AsyncFtpClient(host, user, pass);
+                client.Config.ConnectTimeout = 10000;
                 try
                 {
                     await client.AutoConnect();
-                    if (!await client.FileExists(rutaRemota)) return null;
+
+                    if (!await client.FileExists(rutaRemota))
+                    {
+                        if (intento < intentosMaximos) { await Task.Delay(500 * intento); continue; }
+                        return _ultimaCopiaBuena.GetValueOrDefault(rutaRemota);
+                    }
 
                     using var ms = new MemoryStream();
                     var ok = await client.DownloadStream(ms, rutaRemota);
@@ -144,7 +152,7 @@ namespace miastral_api.Services
                 }
                 catch when (intento < intentosMaximos)
                 {
-                    await Task.Delay(400 * intento);
+                    await Task.Delay(500 * intento);
                 }
                 catch
                 {
@@ -169,6 +177,7 @@ namespace miastral_api.Services
                 return false;
 
             using var client = new AsyncFtpClient(host, user, pass);
+            client.Config.ConnectTimeout = 10000;
             try
             {
                 await client.AutoConnect();

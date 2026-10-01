@@ -2,6 +2,7 @@ using MercadoPago.Client.Payment;
 using MercadoPago.Client.Preference;
 using MercadoPago.Resource.Payment;
 using miastral_api.Data;
+using miastral_api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,11 +16,15 @@ namespace miastral_api.Controllers
     {
         private readonly MiastralContext _db;
         private readonly IConfiguration _config;
+        private readonly EmailService _email;
+        private readonly ILogger<PagosController> _logger;
 
-        public PagosController(MiastralContext db, IConfiguration config)
+        public PagosController(MiastralContext db, IConfiguration config, EmailService email, ILogger<PagosController> logger)
         {
             _db = db;
             _config = config;
+            _email = email;
+            _logger = logger;
         }
 
         private int UsuarioIdActual =>
@@ -108,6 +113,7 @@ namespace miastral_api.Controllers
             var orden = await _db.Ordenes.FindAsync(ordenId);
             if (orden == null) return Ok();
 
+            var estadoAnterior = orden.Estado;
             orden.MpPaymentId = payment.Id.ToString();
             orden.Estado = payment.Status switch
             {
@@ -118,6 +124,35 @@ namespace miastral_api.Controllers
             };
 
             await _db.SaveChangesAsync();
+
+            // Mails automáticos — solo la primera vez que la orden pasa a "pagado"
+            // (MercadoPago puede reenviar el mismo webhook más de una vez).
+            // Un fallo acá nunca debe romper la confirmación a MercadoPago: se
+            // loguea y seguimos, Vale también ve todo desde el panel admin.
+            if (orden.Estado == "pagado" && estadoAnterior != "pagado")
+            {
+                try
+                {
+                    var ordenCompleta = await _db.Ordenes
+                        .Include(o => o.Items).ThenInclude(i => i.Producto)
+                        .Include(o => o.Usuario)
+                        .FirstOrDefaultAsync(o => o.Id == ordenId);
+
+                    if (ordenCompleta != null)
+                    {
+                        var (okCliente, msjCliente) = await _email.EnviarConfirmacionClienteAsync(ordenCompleta);
+                        if (!okCliente) _logger.LogWarning("Mail de confirmación al cliente no enviado (orden {Id}): {Msj}", ordenId, msjCliente);
+
+                        var (okVale, msjVale) = await _email.EnviarNotificacionVentaAsync(ordenCompleta);
+                        if (!okVale) _logger.LogWarning("Mail de aviso de venta a Vale no enviado (orden {Id}): {Msj}", ordenId, msjVale);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error mandando los mails automáticos de la orden {Id}", ordenId);
+                }
+            }
+
             return Ok();
         }
 

@@ -19,6 +19,13 @@
         public string? EnvioProvincia { get; set; }
         public string? EnvioCP { get; set; }
 
+        // Envío por Andreani — se completan al apretar "Generar etiqueta" en el
+        // panel admin (ver AndreaniShippingService). Antes de eso quedan null.
+        public string? EnvioTransportista { get; set; }   // "andreani" (por si a futuro sumamos otro)
+        public string? EnvioNumeroAndreani { get; set; }  // número de la orden de envío / tracking
+        public decimal? EnvioCosto { get; set; }          // lo que cotizó Andreani por el despacho
+        public string? EnvioEtiquetaUrl { get; set; }      // URL del PDF de la etiqueta para imprimir
+
         // Navegación
         public Usuario? Usuario { get; set; }
         public List<OrdenItem> Items { get; set; } = new();

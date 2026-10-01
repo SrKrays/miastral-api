@@ -56,6 +56,13 @@ builder.Services.AddRateLimiter(options =>
 // Subida de archivos a Ferozo/DonWeb por FTP
 builder.Services.AddScoped<FerozoUploadService>();
 
+// Envíos por Andreani (cotizar + generar pre-envío/etiqueta)
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<AndreaniShippingService>();
+
+// Mails automáticos (confirmación al cliente + aviso de venta a Vale)
+builder.Services.AddScoped<EmailService>();
+
 // MercadoPago
 MercadoPagoConfig.AccessToken = builder.Configuration["MercadoPago:AccessToken"];
 
@@ -158,5 +165,10 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// GET /health — endpoint liviano (sin BD, sin auth) para que un cron externo
+// (DonWeb) le pegue cada 10-14 minutos y Render no duerma el servicio por
+// inactividad. No usarlo para nada más que este ping.
+app.MapGet("/health", () => Results.Ok("ok"));
 
 app.Run();

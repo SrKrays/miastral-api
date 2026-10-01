@@ -84,6 +84,10 @@ namespace miastral_api.Data
                 e.Property(x => x.EnvioCiudad).HasColumnName("envio_ciudad");
                 e.Property(x => x.EnvioProvincia).HasColumnName("envio_provincia");
                 e.Property(x => x.EnvioCP).HasColumnName("envio_cp");
+                e.Property(x => x.EnvioTransportista).HasColumnName("envio_transportista");
+                e.Property(x => x.EnvioNumeroAndreani).HasColumnName("envio_numero_andreani");
+                e.Property(x => x.EnvioCosto).HasColumnName("envio_costo");
+                e.Property(x => x.EnvioEtiquetaUrl).HasColumnName("envio_etiqueta_url");
                 e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Restrict);
                 e.HasMany(x => x.Items).WithOne(x => x.Orden).HasForeignKey(x => x.OrdenId).OnDelete(DeleteBehavior.Cascade);
             });

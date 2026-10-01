@@ -1,5 +1,6 @@
 using miastral_api.Data;
 using miastral_api.Models;
+using miastral_api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,12 @@ namespace miastral_api.Controllers
     public class OrdenesController : ControllerBase
     {
         private readonly MiastralContext _db;
+        private readonly AndreaniShippingService _andreani;
 
-        public OrdenesController(MiastralContext db)
+        public OrdenesController(MiastralContext db, AndreaniShippingService andreani)
         {
             _db = db;
+            _andreani = andreani;
         }
 
         private int UsuarioIdActual =>
@@ -125,6 +128,10 @@ namespace miastral_api.Controllers
                     o.EnvioCiudad,
                     o.EnvioProvincia,
                     o.EnvioCP,
+                    o.EnvioTransportista,
+                    o.EnvioNumeroAndreani,
+                    o.EnvioCosto,
+                    o.EnvioEtiquetaUrl,
                     Comprador = o.Usuario == null ? null : new { o.Usuario.Nombre, o.Usuario.Apellido, o.Usuario.Email },
                     Items = o.Items.Select(i => new { i.Id, i.ProductoId, i.Cantidad, i.PrecioUnitario, ProductoNombre = i.Producto != null ? i.Producto.Nombre : null }),
                 })
@@ -149,6 +156,125 @@ namespace miastral_api.Controllers
             await _db.SaveChangesAsync();
 
             return Ok(orden);
+        }
+
+        // Suma el peso y volumen de los productos físicos de una orden, para
+        // mandárselo a Andreani como un único bulto. Devuelve error si algún
+        // producto de la orden todavía no tiene peso/medidas cargadas en el
+        // panel admin (Productos → Peso/Alto/Ancho/Largo).
+        private async Task<(bool ok, string mensaje, decimal kilos, decimal volumenCm3)> CalcularBultoAsync(int ordenId)
+        {
+            var orden = await _db.Ordenes.Include(o => o.Items).ThenInclude(i => i.Producto)
+                .FirstOrDefaultAsync(o => o.Id == ordenId);
+            if (orden == null) return (false, "Orden no encontrada", 0, 0);
+
+            decimal gramos = 0, volumen = 0;
+            var faltantes = new List<string>();
+
+            foreach (var item in orden.Items)
+            {
+                var p = item.Producto;
+                if (p == null) continue;
+                if (p.PesoGramos == null || p.AltoCm == null || p.AnchoCm == null || p.LargoCm == null)
+                {
+                    faltantes.Add(p.Nombre);
+                    continue;
+                }
+                gramos += p.PesoGramos.Value * item.Cantidad;
+                volumen += (decimal)p.AltoCm.Value * p.AnchoCm.Value * p.LargoCm.Value * item.Cantidad;
+            }
+
+            if (faltantes.Count > 0)
+                return (false, $"Faltan peso/medidas en el panel admin de estos productos: {string.Join(", ", faltantes.Distinct())}.", 0, 0);
+
+            return (true, "OK", gramos / 1000m, volumen);
+        }
+
+        // POST api/ordenes/5/cotizar-envio — solo admin. Cotiza sin generar nada,
+        // para que Vale vea el costo antes de imprimir la etiqueta.
+        [HttpPost("{id}/cotizar-envio")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> CotizarEnvio(int id)
+        {
+            var orden = await _db.Ordenes.FindAsync(id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+            if (string.IsNullOrWhiteSpace(orden.EnvioCP))
+                return BadRequest(new { message = "Esta orden no tiene código postal de envío cargado." });
+
+            var (okBulto, msjBulto, kilos, volumen) = await CalcularBultoAsync(id);
+            if (!okBulto) return BadRequest(new { message = msjBulto });
+
+            var (ok, mensaje, costo) = await _andreani.CotizarAsync(orden.EnvioCP!, kilos, volumen, orden.Total);
+            if (!ok) return StatusCode(502, new { message = mensaje });
+
+            return Ok(new { costo });
+        }
+
+        // POST api/ordenes/5/generar-envio — solo admin. Crea el pre-envío en
+        // Andreani y guarda tracking/costo en la orden. Requiere credenciales
+        // de Andreani cargadas (Usuario/Contraseña/Contrato) y peso/medidas
+        // cargados en todos los productos físicos de la orden.
+        [HttpPost("{id}/generar-envio")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> GenerarEnvio(int id)
+        {
+            var orden = await _db.Ordenes.FindAsync(id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+            if (string.IsNullOrWhiteSpace(orden.EnvioCP))
+                return BadRequest(new { message = "Esta orden no tiene dirección de envío cargada." });
+            if (!string.IsNullOrEmpty(orden.EnvioNumeroAndreani))
+                return BadRequest(new { message = $"Esta orden ya tiene un envío de Andreani generado (#{orden.EnvioNumeroAndreani})." });
+
+            var (okBulto, msjBulto, kilos, volumen) = await CalcularBultoAsync(id);
+            if (!okBulto) return BadRequest(new { message = msjBulto });
+
+            var (ok, mensaje, numero) = await _andreani.CrearEnvioAsync(orden, kilos, volumen);
+            if (!ok) return StatusCode(502, new { message = mensaje });
+
+            var (okCotiza, _, costo) = await _andreani.CotizarAsync(orden.EnvioCP!, kilos, volumen, orden.Total);
+
+            orden.EnvioTransportista = "andreani";
+            orden.EnvioNumeroAndreani = numero;
+            orden.EnvioCosto = okCotiza ? costo : null;
+            orden.EnvioEtiquetaUrl = $"{Request.Scheme}://{Request.Host}/api/ordenes/{id}/etiqueta";
+            await _db.SaveChangesAsync();
+
+            return Ok(new { orden.EnvioTransportista, orden.EnvioNumeroAndreani, orden.EnvioCosto, orden.EnvioEtiquetaUrl });
+        }
+
+        // GET api/ordenes/5/etiqueta — solo admin. Trae el PDF de Andreani al
+        // vuelo (no lo guardamos en ningún hosting propio).
+        [HttpGet("{id}/etiqueta")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> ObtenerEtiqueta(int id)
+        {
+            var orden = await _db.Ordenes.FindAsync(id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+            if (string.IsNullOrEmpty(orden.EnvioNumeroAndreani))
+                return BadRequest(new { message = "Esta orden todavía no tiene un envío de Andreani generado." });
+
+            var (ok, mensaje, pdf) = await _andreani.ObtenerEtiquetaAsync(orden.EnvioNumeroAndreani);
+            if (!ok || pdf == null) return StatusCode(502, new { message = mensaje });
+
+            return File(pdf, "application/pdf", $"etiqueta-orden-{id}.pdf");
+        }
+
+        // GET api/ordenes/5/estado-envio — solo admin. Consulta el tracking en
+        // Andreani (no toca el campo "Estado" propio de la orden, que Vale
+        // sigue manejando a mano desde el selector).
+        [HttpGet("{id}/estado-envio")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> EstadoEnvio(int id)
+        {
+            var orden = await _db.Ordenes.FindAsync(id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+            if (string.IsNullOrEmpty(orden.EnvioNumeroAndreani))
+                return BadRequest(new { message = "Esta orden todavía no tiene un envío de Andreani generado." });
+
+            var (ok, mensaje, estado) = await _andreani.ConsultarEstadoAsync(orden.EnvioNumeroAndreani);
+            if (!ok) return StatusCode(502, new { message = mensaje });
+
+            return Ok(new { estado });
         }
 
         // DELETE api/ordenes/5 — solo admin. Borrado real de la orden.
