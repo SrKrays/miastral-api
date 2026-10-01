@@ -29,7 +29,7 @@ namespace miastral_api.Services
         }
 
         private bool CredencialesCargadas =>
-            !string.IsNullOrWhiteSpace(_config["Email:Usuario"]) && !string.IsNullOrWhiteSpace(_config["Email:Contraseña"]);
+            !string.IsNullOrWhiteSpace(_config["Email:Usuario"]) && !string.IsNullOrWhiteSpace(_config["Email:Password"]);
 
         private static string FormatARS(decimal n) => $"${n.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))}";
 
@@ -37,7 +37,7 @@ namespace miastral_api.Services
         private async Task<(bool ok, string mensaje)> EnviarAsync(string destinatario, string asunto, string htmlBody)
         {
             if (!CredencialesCargadas)
-                return (false, "Todavía no cargamos las credenciales de mail (Email:Usuario/Contraseña).");
+                return (false, "Todavía no cargamos las credenciales de mail (Email:Usuario/Password).");
 
             if (string.IsNullOrWhiteSpace(destinatario))
                 return (false, "No hay un email de destino para mandar este mail.");
@@ -54,7 +54,7 @@ namespace miastral_api.Services
                 var host = _config["Email:SmtpHost"] ?? "smtp.gmail.com";
                 var port = int.TryParse(_config["Email:SmtpPort"], out var p) ? p : 587;
                 await client.ConnectAsync(host, port, SecureSocketOptions.StartTls);
-                await client.AuthenticateAsync(_config["Email:Usuario"], _config["Email:Contraseña"]);
+                await client.AuthenticateAsync(_config["Email:Usuario"], _config["Email:Password"]);
                 await client.SendAsync(mensaje);
                 await client.DisconnectAsync(true);
 

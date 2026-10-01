@@ -42,11 +42,11 @@ namespace miastral_api.Services
 
         private string BaseUrl => (_config["Andreani:BaseUrl"] ?? "https://apisqa.andreani.com").TrimEnd('/');
         private string? Usuario => _config["Andreani:Usuario"];
-        private string? Contraseña => _config["Andreani:Contraseña"];
+        private string? Password => _config["Andreani:Password"];
         private string? Contrato => _config["Andreani:Contrato"];
 
         public bool CredencialesCargadas =>
-            !string.IsNullOrWhiteSpace(Usuario) && !string.IsNullOrWhiteSpace(Contraseña) && !string.IsNullOrWhiteSpace(Contrato);
+            !string.IsNullOrWhiteSpace(Usuario) && !string.IsNullOrWhiteSpace(Password) && !string.IsNullOrWhiteSpace(Contrato);
 
         // ── Autenticación ────────────────────────────────────────────────
         // GET {BaseUrl}/login con Basic Auth → devuelve un token que se manda
@@ -54,7 +54,7 @@ namespace miastral_api.Services
         private async Task<(bool ok, string tokenOMensaje)> ObtenerTokenAsync()
         {
             if (!CredencialesCargadas)
-                return (false, "Todavía no cargamos las credenciales de Andreani (Usuario/Contraseña/Contrato en appsettings o variables de entorno de Render).");
+                return (false, "Todavía no cargamos las credenciales de Andreani (Usuario/Password/Contrato en appsettings o variables de entorno de Render).");
 
             await _tokenLock.WaitAsync();
             try
@@ -63,7 +63,7 @@ namespace miastral_api.Services
                     return (true, _tokenCacheado);
 
                 var client = _httpFactory.CreateClient();
-                var basicAuth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Usuario}:{Contraseña}"));
+                var basicAuth = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Usuario}:{Password}"));
 
                 var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/login");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basicAuth);
