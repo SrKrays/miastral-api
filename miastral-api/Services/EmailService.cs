@@ -1,6 +1,6 @@
-using MailKit.Net.Smtp;
-using MailKit.Security;
-using MimeKit;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using miastral_api.Models;
 
 namespace miastral_api.Services
@@ -11,52 +11,68 @@ namespace miastral_api.Services
     //   2) A Vale: aviso de venta + los datos del cliente ya ordenados tal cual
     //      los pide el formulario de Correo Argentino, para copiar y pegar.
     //
-    // Usa SMTP de Gmail (MailKit). Necesita una "Contraseña de aplicación" de
-    // Google (Cuenta de Google → Seguridad → Verificación en 2 pasos →
-    // Contraseñas de aplicaciones) — la contraseña normal de Gmail NO sirve
-    // para esto. Mientras Email:Usuario/Contraseña no estén cargados en
-    // appsettings/variables de entorno, los métodos no fallan la compra: solo
-    // devuelven ok=false y el webhook lo loguea sin romper nada.
+    // Usa la API HTTP de Resend (https://resend.com) en vez de SMTP directo:
+    // Render bloquea los puertos SMTP (465/587) salientes en su plan gratuito
+    // desde sept/2025 (confirmado — cualquier intento de SMTP directo da
+    // TimeoutException), así que mandar por HTTPS es la única opción viable
+    // sin pagar un plan de Render más caro.
+    //
+    // Necesita: una cuenta gratis en resend.com, el dominio byvalentinam.com
+    // verificado ahí (un par de registros DNS), y un API Key generado en su
+    // dashboard. Mientras Email:ResendApiKey no esté cargado, los métodos no
+    // fallan la compra: solo devuelven ok=false y el webhook lo loguea sin
+    // romper nada.
     public class EmailService
     {
         private readonly IConfiguration _config;
+        private readonly IHttpClientFactory _httpFactory;
         private readonly ILogger<EmailService> _logger;
 
-        public EmailService(IConfiguration config, ILogger<EmailService> logger)
+        public EmailService(IConfiguration config, IHttpClientFactory httpFactory, ILogger<EmailService> logger)
         {
             _config = config;
+            _httpFactory = httpFactory;
             _logger = logger;
         }
 
-        private bool CredencialesCargadas =>
-            !string.IsNullOrWhiteSpace(_config["Email:Usuario"]) && !string.IsNullOrWhiteSpace(_config["Email:Password"]);
+        private bool CredencialesCargadas => !string.IsNullOrWhiteSpace(_config["Email:ResendApiKey"]);
 
         private static string FormatARS(decimal n) => $"${n.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))}";
 
-        // ── Envío genérico ───────────────────────────────────────────────
+        // ── Envío genérico — POST https://api.resend.com/emails ──────────
         private async Task<(bool ok, string mensaje)> EnviarAsync(string destinatario, string asunto, string htmlBody)
         {
             if (!CredencialesCargadas)
-                return (false, "Todavía no cargamos las credenciales de mail (Email:Usuario/Password).");
+                return (false, "Todavía no cargamos la API Key de Resend (Email:ResendApiKey).");
 
             if (string.IsNullOrWhiteSpace(destinatario))
                 return (false, "No hay un email de destino para mandar este mail.");
 
             try
             {
-                var mensaje = new MimeMessage();
-                mensaje.From.Add(new MailboxAddress(_config["Email:NombreRemitente"] ?? "By Valentina M.", _config["Email:Usuario"]));
-                mensaje.To.Add(MailboxAddress.Parse(destinatario));
-                mensaje.Subject = asunto;
-                mensaje.Body = new BodyBuilder { HtmlBody = htmlBody }.ToMessageBody();
+                var remitenteNombre = _config["Email:NombreRemitente"] ?? "By Valentina M.";
+                var remitenteDireccion = _config["Email:FromAddress"] ?? "notificaciones@byvalentinam.com";
 
-                using var client = new SmtpClient();
-                var host = _config["Email:SmtpHost"] ?? "smtp.gmail.com";
-                var port = int.TryParse(_config["Email:SmtpPort"], out var p) ? p : 587;
-                await client.ConnectAsync(host, port, SecureSocketOptions.StartTls);
-                await client.AuthenticateAsync(_config["Email:Usuario"], _config["Email:Password"]);
-                await client.SendAsync(mensaje);
-                await client.DisconnectAsync(true);
+                var payload = new
+                {
+                    from = $"{remitenteNombre} <{remitenteDireccion}>",
+                    to = new[] { destinatario },
+                    subject = asunto,
+                    html = htmlBody,
+                };
+
+                var client = _httpFactory.CreateClient();
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _config["Email:ResendApiKey"]);
+                var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                var response = await client.PostAsync("https://api.resend.com/emails", content);
+                var body = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Resend rechazó el mail a {Destinatario} ({Status}): {Body}", destinatario, (int)response.StatusCode, body);
+                    return (false, $"Resend rechazó el mail ({(int)response.StatusCode}): {body}");
+                }
 
                 return (true, "OK");
             }
