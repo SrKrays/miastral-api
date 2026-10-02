@@ -83,20 +83,76 @@ namespace miastral_api.Services
             }
         }
 
-        // ── Header común (logo si está cargado, si no el nombre en texto) ──
+        // ── Paleta — tomada tal cual de src/styles/variables.css del frontend,
+        // así los mails se sienten parte de la misma marca que la web. ──────
+        private const string ColorBg       = "#f7f3ec"; // --bg-cream
+        private const string ColorCard     = "#ffffff";
+        private const string ColorTextDark = "#19232e"; // --c-900
+        private const string ColorTextMid  = "#3a5069"; // --c-700
+        private const string ColorTextMute = "#4a6787"; // --c-600
+        private const string ColorBlue       = "#7894b5"; // --c-400
+        private const string ColorSand       = "#B4A484"; // --accent-coral (hoy es un marrón/arena)
+        private const string ColorGold       = "#A6883E"; // --accent-gold
+        private const string ColorTerracotta = "#C17B54"; // acento cálido para los títulos grandes (GRACIAS)
+        private const string ColorSage       = "#7C8C5B"; // verde salvia para el subtítulo en cursiva
+        private const string FontDisplay     = "Georgia,'Cormorant Garamond','Times New Roman',serif";
+        private const string FontBody        = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+
+        // Header de marca: nombre + tagline + línea separadora, igual en los dos mails.
         private string Header()
         {
-            var logo = _config["Email:LogoUrl"];
-            return string.IsNullOrWhiteSpace(logo)
-                ? "<div style=\"font-family:Georgia,serif;font-size:22px;color:#f2e4d8;letter-spacing:1px;\">By Valentina M.</div>"
-                : $"<img src=\"{logo}\" alt=\"By Valentina M.\" style=\"max-height:60px;\" />";
+            return $@"
+<div style=""text-align:center;"">
+  <div style=""font-family:{FontDisplay};font-size:20px;letter-spacing:0.5px;color:{ColorTextDark};"">By Valentina M.</div>
+  <div style=""font-family:{FontBody};font-size:11px;letter-spacing:2px;text-transform:uppercase;color:{ColorBlue};margin-top:4px;"">Diseño Humano &amp; Física Cuántica</div>
+</div>
+<div style=""border-top:1px solid rgba(25,35,46,0.12);margin:20px 0 24px;""></div>";
+        }
+
+        // Ilustración de marca (sol/órbita/hojas — public/logo.png) con una
+        // estrellita arriba, igual que en la imagen de referencia.
+        private string Ilustracion()
+        {
+            var frontendUrl = (_config["Frontend:Url"] ?? "https://byvalentinam.com").TrimEnd('/');
+            return $@"
+<div style=""text-align:center;color:{ColorSand};font-size:14px;margin-bottom:8px;"">✦</div>
+<div style=""text-align:center;margin-bottom:4px;"">
+  <img src=""{frontendUrl}/logo.png"" alt=""By Valentina M."" style=""width:130px;height:auto;"" />
+</div>";
+        }
+
+        // Título grande estilo editorial: palabra grande en terracota + subtítulo
+        // en cursiva salvia + línea/corazón decorativo + bajada de texto.
+        private string Titular(string linea1, string linea2, string subtitulo)
+        {
+            return $@"
+<div style=""text-align:center;margin-bottom:28px;"">
+  <div style=""font-family:{FontDisplay};font-size:48px;line-height:1.05;letter-spacing:1px;color:{ColorTerracotta};"">{linea1}</div>
+  <div style=""font-family:{FontDisplay};font-style:italic;font-size:26px;color:{ColorSage};margin-top:2px;"">{linea2}</div>
+  <div style=""text-align:center;margin-top:14px;"">
+    <div style=""width:1px;height:14px;background:rgba(25,35,46,0.25);margin:0 auto;""></div>
+    <div style=""color:{ColorTerracotta};font-size:15px;margin-top:4px;"">♥</div>
+  </div>
+  <div style=""font-family:{FontBody};color:{ColorTextMute};font-size:14px;margin-top:14px;"">{subtitulo}</div>
+</div>";
+        }
+
+        // Pie de marca: línea + estrellita + nombre, igual en los dos mails.
+        private string Footer()
+        {
+            return $@"
+<div style=""text-align:center;margin-top:28px;"">
+  <div style=""border-top:1px solid rgba(25,35,46,0.12);margin-bottom:12px;""></div>
+  <div style=""color:{ColorSand};font-size:12px;margin-bottom:8px;"">✦</div>
+  <div style=""font-family:{FontBody};color:{ColorTextMid};font-size:11px;letter-spacing:0.5px;"">By Valentina M. — Diseño Humano &amp; Física Cuántica</div>
+</div>";
         }
 
         private static string TablaItems(Orden orden)
         {
             var filas = orden.Items.Select(i =>
-                $"<tr><td style=\"padding:6px 0;\">{i.Cantidad}× {(i.Producto?.Nombre ?? "Producto")}</td>" +
-                $"<td style=\"padding:6px 0;text-align:right;\">{FormatARS(i.PrecioUnitario * i.Cantidad)}</td></tr>");
+                $"<tr><td style=\"padding:7px 0;color:{ColorTextDark};\">{i.Cantidad}× {(i.Producto?.Nombre ?? "Producto")}</td>" +
+                $"<td style=\"padding:7px 0;text-align:right;color:{ColorTextDark};\">{FormatARS(i.PrecioUnitario * i.Cantidad)}</td></tr>");
             return string.Join("", filas);
         }
 
@@ -108,23 +164,30 @@ namespace miastral_api.Services
 
             var hayFisico = orden.Items.Any(i => i.Producto?.Tipo == "producto");
             var notaEnvio = hayFisico
-                ? "<p style=\"color:#8fa9c9;\">Tu compra incluye un producto físico — en breve nos ponemos en contacto para coordinar la entrega.</p>"
+                ? $"<p style=\"color:{ColorGold};font-family:{FontBody};font-size:13px;background:rgba(166,136,62,0.08);border-radius:8px;padding:12px 14px;\">Tu compra incluye un producto físico — en breve nos ponemos en contacto para coordinar la entrega.</p>"
                 : "";
 
             var html = $@"
-<div style=""background:#0d1017;padding:32px 24px;font-family:Arial,Helvetica,sans-serif;color:#e8e4dc;"">
-  <div style=""max-width:520px;margin:0 auto;background:#161a24;border-radius:12px;padding:32px;"">
-    <div style=""text-align:center;margin-bottom:24px;"">{Header()}</div>
-    <h2 style=""color:#f2e4d8;font-weight:400;"">¡Gracias por tu compra{(string.IsNullOrEmpty(nombre) ? "" : $", {nombre}")}!</h2>
-    <p style=""color:#b8b4ac;"">Tu pedido #{orden.Id} quedó confirmado. Acá el resumen:</p>
-    <table style=""width:100%;border-collapse:collapse;margin:16px 0;color:#e8e4dc;"">
-      {TablaItems(orden)}
-      <tr><td style=""padding-top:12px;border-top:1px solid #2a2f3a;font-weight:bold;"">Total</td>
-          <td style=""padding-top:12px;border-top:1px solid #2a2f3a;text-align:right;font-weight:bold;"">{FormatARS(orden.Total)}</td></tr>
-    </table>
-    {notaEnvio}
-    <p style=""color:#b8b4ac;margin-top:24px;"">Cualquier duda, escribinos — ¡gracias por confiar en este espacio!</p>
-    <p style=""color:#6f7684;font-size:12px;margin-top:32px;"">By Valentina M. — Diseño Humano & Física Cuántica</p>
+<div style=""background:{ColorBg};padding:40px 20px;"">
+  <div style=""max-width:560px;margin:0 auto;"">
+    {Header()}
+    {Ilustracion()}
+    {Titular("GRACIAS", "Por tu compra", "Esperamos que lo disfrutes. Cada producto está hecho con mucho amor.")}
+
+    <div style=""background:{ColorCard};border:1px solid rgba(25,35,46,0.1);border-radius:12px;padding:32px;font-family:{FontBody};"">
+      <div style=""font-family:{FontDisplay};font-size:22px;color:{ColorTerracotta};margin-bottom:6px;"">¡Gracias por tu compra{(string.IsNullOrEmpty(nombre) ? "" : $", {nombre}")}!</div>
+      <div style=""color:{ColorTextMute};font-size:14px;margin-bottom:20px;"">Tu pedido #{orden.Id} quedó confirmado. Acá el resumen:</div>
+      <table style=""width:100%;border-collapse:collapse;margin-bottom:8px;"">
+        {TablaItems(orden)}
+        <tr><td style=""padding-top:12px;border-top:1px solid rgba(25,35,46,0.12);font-weight:bold;color:{ColorTextDark};"">Total</td>
+            <td style=""padding-top:12px;border-top:1px solid rgba(25,35,46,0.12);text-align:right;font-weight:bold;color:{ColorTextDark};"">{FormatARS(orden.Total)}</td></tr>
+      </table>
+      {(hayFisico ? $"<div style=\"margin:16px 0;\">{notaEnvio}</div>" : "")}
+      <div style=""border-top:1px solid rgba(25,35,46,0.1);margin-top:20px;padding-top:16px;color:{ColorTextMute};font-size:13px;"">
+        Cualquier duda, escribinos — ¡gracias por confiar en este espacio!
+      </div>
+    </div>
+    {Footer()}
   </div>
 </div>";
 
@@ -138,39 +201,48 @@ namespace miastral_api.Services
 
             // Mismo orden de campos que pide el formulario web de Correo Argentino,
             // para que Vale pueda ir copiando uno abajo del otro sin buscar nada.
+            // Va en una caja resaltada (tono arena) para que salte a la vista.
             var datosEnvio = $@"
-<table style=""width:100%;border-collapse:collapse;margin:12px 0;color:#e8e4dc;"">
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Destinatario</td><td style=""padding:4px 0;"">{orden.EnvioNombre ?? "—"}</td></tr>
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Teléfono</td><td style=""padding:4px 0;"">{orden.EnvioTelefono ?? "—"}</td></tr>
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Email</td><td style=""padding:4px 0;"">{orden.EnvioEmail ?? "—"}</td></tr>
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Calle y número</td><td style=""padding:4px 0;"">{orden.EnvioCalle ?? "—"}</td></tr>
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Ciudad</td><td style=""padding:4px 0;"">{orden.EnvioCiudad ?? "—"}</td></tr>
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Provincia</td><td style=""padding:4px 0;"">{orden.EnvioProvincia ?? "—"}</td></tr>
-  <tr><td style=""padding:4px 0;color:#8fa9c9;"">Código postal</td><td style=""padding:4px 0;"">{orden.EnvioCP ?? "—"}</td></tr>
-</table>";
+<div style=""background:rgba(180,164,132,0.1);border:1px solid rgba(180,164,132,0.3);border-radius:10px;padding:18px 20px;margin:10px 0;"">
+  <table style=""width:100%;border-collapse:collapse;"">
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;width:140px;"">Destinatario</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioNombre ?? "—"}</td></tr>
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Teléfono</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioTelefono ?? "—"}</td></tr>
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Email</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioEmail ?? "—"}</td></tr>
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Calle y número</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioCalle ?? "—"}</td></tr>
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Ciudad</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioCiudad ?? "—"}</td></tr>
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Provincia</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioProvincia ?? "—"}</td></tr>
+    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Código postal</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioCP ?? "—"}</td></tr>
+  </table>
+</div>";
 
             var pesos = orden.Items
                 .Where(i => i.Producto?.PesoGramos != null)
-                .Select(i => $"<div style=\"color:#8fa9c9;font-size:12px;\">{i.Producto!.Nombre}: {i.Producto.PesoGramos}g · {i.Producto.AltoCm}×{i.Producto.AnchoCm}×{i.Producto.LargoCm}cm</div>");
+                .Select(i => $"<div style=\"color:{ColorTextMute};font-size:12px;font-family:{FontBody};\">{i.Producto!.Nombre}: {i.Producto.PesoGramos}g · {i.Producto.AltoCm}×{i.Producto.AnchoCm}×{i.Producto.LargoCm}cm</div>");
 
             var html = $@"
-<div style=""background:#0d1017;padding:32px 24px;font-family:Arial,Helvetica,sans-serif;color:#e8e4dc;"">
-  <div style=""max-width:560px;margin:0 auto;background:#161a24;border-radius:12px;padding:32px;"">
-    <h2 style=""color:#f2e4d8;font-weight:400;"">Nueva venta — Pedido #{orden.Id}</h2>
-    <p style=""color:#b8b4ac;"">{orden.FechaCreacion:dd/MM/yyyy HH:mm} · Mercado Pago · pago #{orden.MpPaymentId}</p>
+<div style=""background:{ColorBg};padding:40px 20px;"">
+  <div style=""max-width:560px;margin:0 auto;"">
+    {Header()}
+    {Ilustracion()}
+    {Titular("VENTA", "Confirmada", $"Pedido #{orden.Id} · {orden.FechaCreacion:dd/MM/yyyy HH:mm} · Mercado Pago · pago #{orden.MpPaymentId}")}
 
-    <h3 style=""color:#e8735a;font-weight:400;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;margin-top:24px;"">Productos</h3>
-    <table style=""width:100%;border-collapse:collapse;margin:8px 0;color:#e8e4dc;"">
-      {TablaItems(orden)}
-      <tr><td style=""padding-top:12px;border-top:1px solid #2a2f3a;font-weight:bold;"">Total</td>
-          <td style=""padding-top:12px;border-top:1px solid #2a2f3a;text-align:right;font-weight:bold;"">{FormatARS(orden.Total)}</td></tr>
-    </table>
-    {string.Join("", pesos)}
+    <div style=""background:{ColorCard};border:1px solid rgba(25,35,46,0.1);border-radius:12px;padding:32px;font-family:{FontBody};"">
+      <div style=""font-family:{FontDisplay};font-size:20px;color:{ColorTerracotta};margin-bottom:16px;"">Pedido #{orden.Id}</div>
 
-    <h3 style=""color:#e8735a;font-weight:400;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;margin-top:24px;"">Datos para Correo Argentino</h3>
-    {datosEnvio}
+      <div style=""font-family:{FontBody};font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:{ColorBlue};margin-bottom:8px;"">Productos</div>
+      <table style=""width:100%;border-collapse:collapse;margin-bottom:4px;"">
+        {TablaItems(orden)}
+        <tr><td style=""padding-top:12px;border-top:1px solid rgba(25,35,46,0.12);font-weight:bold;color:{ColorTextDark};"">Total</td>
+            <td style=""padding-top:12px;border-top:1px solid rgba(25,35,46,0.12);text-align:right;font-weight:bold;color:{ColorTextDark};"">{FormatARS(orden.Total)}</td></tr>
+      </table>
+      {string.Join("", pesos)}
 
-    <p style=""color:#6f7684;font-size:12px;margin-top:24px;"">También podés ver este pedido y copiar estos datos con un clic desde el panel admin → Órdenes.</p>
+      <div style=""font-family:{FontBody};font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:{ColorBlue};margin-top:24px;margin-bottom:4px;"">Datos para Correo Argentino</div>
+      {datosEnvio}
+
+      <div style=""color:{ColorTextMute};font-size:12px;margin-top:16px;"">También podés ver este pedido y copiar estos datos con un clic desde el panel admin → Órdenes.</div>
+    </div>
+    {Footer()}
   </div>
 </div>";
 
