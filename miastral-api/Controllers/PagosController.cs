@@ -17,13 +17,15 @@ namespace miastral_api.Controllers
         private readonly MiastralContext _db;
         private readonly IConfiguration _config;
         private readonly EmailService _email;
+        private readonly MiCorreoService _micorreo;
         private readonly ILogger<PagosController> _logger;
 
-        public PagosController(MiastralContext db, IConfiguration config, EmailService email, ILogger<PagosController> logger)
+        public PagosController(MiastralContext db, IConfiguration config, EmailService email, MiCorreoService micorreo, ILogger<PagosController> logger)
         {
             _db = db;
             _config = config;
             _email = email;
+            _micorreo = micorreo;
             _logger = logger;
         }
 
@@ -48,17 +50,35 @@ namespace miastral_api.Controllers
             var frontendUrl = _config["Frontend:Url"];
             var backendUrl = _config["Backend:Url"];
 
+            var itemsMp = orden.Items.Select(i => new PreferenceItemRequest
+            {
+                Id = i.ProductoId.ToString(),
+                Title = i.Producto?.Nombre ?? "Producto",
+                Quantity = i.Cantidad,
+                CurrencyId = "ARS",
+                UnitPrice = i.PrecioUnitario,
+            }).ToList();
+
+            // El costo de envío (ya sumado al Total de la orden) va como un item
+            // más, para que el total que cobra MercadoPago coincida con el de la orden.
+            if (orden.EnvioTransportista == "micorreo" && orden.EnvioCosto is > 0)
+            {
+                itemsMp.Add(new PreferenceItemRequest
+                {
+                    Id = "envio",
+                    Title = orden.EnvioTipoEntrega == "sucursal"
+                        ? "Envío a sucursal — Correo Argentino"
+                        : "Envío a domicilio — Correo Argentino",
+                    Quantity = 1,
+                    CurrencyId = "ARS",
+                    UnitPrice = orden.EnvioCosto.Value,
+                });
+            }
+
             var request = new PreferenceRequest
             {
                 ExternalReference = orden.Id.ToString(),
-                Items = orden.Items.Select(i => new PreferenceItemRequest
-                {
-                    Id = i.ProductoId.ToString(),
-                    Title = i.Producto?.Nombre ?? "Producto",
-                    Quantity = i.Cantidad,
-                    CurrencyId = "ARS",
-                    UnitPrice = i.PrecioUnitario,
-                }).ToList(),
+                Items = itemsMp,
                 BackUrls = new PreferenceBackUrlsRequest
                 {
                     Success = $"{frontendUrl}/carrito/confirmacion?orden={orden.Id}",
@@ -140,6 +160,8 @@ namespace miastral_api.Controllers
 
                     if (ordenCompleta != null)
                     {
+                        await ImportarEnvioMiCorreoAsync(ordenCompleta);
+
                         var (okCliente, msjCliente) = await _email.EnviarConfirmacionClienteAsync(ordenCompleta);
                         if (!okCliente) _logger.LogWarning("Mail de confirmación al cliente no enviado (orden {Id}): {Msj}", ordenId, msjCliente);
 
@@ -154,6 +176,43 @@ namespace miastral_api.Controllers
             }
 
             return Ok();
+        }
+
+        // Carga el envío en MiCorreo apenas se confirma el pago. Si falla (o si
+        // MiCorreo todavía no está configurado) NO rompe nada: queda anotado en
+        // EnvioMiCorreoEstado, el mail a Vale avisa que hay que cargarlo a mano,
+        // y desde el panel admin se puede reintentar.
+        private async Task ImportarEnvioMiCorreoAsync(Models.Orden orden)
+        {
+            if (orden.EnvioTransportista != "micorreo" || orden.EnvioMiCorreoEstado == "importado") return;
+            if (!_micorreo.CredencialesCargadas) return;
+
+            try
+            {
+                var (bulto, faltantes) = MiCorreoService.ArmarBulto(
+                    orden.Items.Where(i => i.Producto != null).Select(i => (i.Producto!, i.Cantidad)));
+
+                if (bulto == null)
+                {
+                    orden.EnvioMiCorreoEstado = faltantes != null
+                        ? $"error: faltan peso/medidas de {faltantes}"
+                        : null; // sin productos físicos: nada que importar
+                }
+                else
+                {
+                    var valorDeclarado = orden.Total - (orden.EnvioCosto ?? 0);
+                    var (ok, mensaje) = await _micorreo.ImportarEnvioAsync(orden, bulto, valorDeclarado);
+                    orden.EnvioMiCorreoEstado = ok ? "importado" : $"error: {mensaje}";
+                    if (!ok) _logger.LogWarning("No pudimos importar la orden {Id} a MiCorreo: {Msj}", orden.Id, mensaje);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importando la orden {Id} a MiCorreo", orden.Id);
+                orden.EnvioMiCorreoEstado = $"error: {ex.Message}";
+            }
+
+            await _db.SaveChangesAsync();
         }
 
         // GET api/pagos/ordenes/5/estado — la pantalla de confirmación del front consulta

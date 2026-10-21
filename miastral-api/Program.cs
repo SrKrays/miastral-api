@@ -60,6 +60,10 @@ builder.Services.AddScoped<FerozoUploadService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AndreaniShippingService>();
 
+// Envíos por Correo Argentino / MiCorreo (sucursales, cotizar, importar envío)
+builder.Services.AddScoped<MiCorreoService>();
+builder.Services.AddScoped<EnvioCotizadorService>();
+
 // Mails automáticos (confirmación al cliente + aviso de venta a Vale)
 builder.Services.AddScoped<EmailService>();
 

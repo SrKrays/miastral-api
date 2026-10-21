@@ -153,7 +153,11 @@ namespace miastral_api.Services
             var filas = orden.Items.Select(i =>
                 $"<tr><td style=\"padding:7px 0;color:{ColorTextDark};\">{i.Cantidad}× {(i.Producto?.Nombre ?? "Producto")}</td>" +
                 $"<td style=\"padding:7px 0;text-align:right;color:{ColorTextDark};\">{FormatARS(i.PrecioUnitario * i.Cantidad)}</td></tr>");
-            return string.Join("", filas);
+            var envio = orden.EnvioTransportista == "micorreo" && orden.EnvioCosto is > 0
+                ? $"<tr><td style=\"padding:7px 0;color:{ColorTextMute};\">Envío — Correo Argentino ({(orden.EnvioTipoEntrega == "sucursal" ? "a sucursal" : "a domicilio")})</td>" +
+                  $"<td style=\"padding:7px 0;text-align:right;color:{ColorTextMute};\">{FormatARS(orden.EnvioCosto.Value)}</td></tr>"
+                : "";
+            return string.Join("", filas) + envio;
         }
 
         // ── 1) Mail al cliente ──────────────────────────────────────────
@@ -163,8 +167,14 @@ namespace miastral_api.Services
             var destino = orden.EnvioEmail ?? orden.Usuario?.Email;
 
             var hayFisico = orden.Items.Any(i => i.Producto?.Tipo == "producto");
+            var textoEnvio = orden.EnvioTipoEntrega switch
+            {
+                "sucursal" => $"Tu compra incluye un producto físico. Lo vas a retirar en la sucursal de Correo Argentino que elegiste: {orden.EnvioSucursalNombre}. Cuando lo despachemos te avisamos.",
+                "domicilio" => "Tu compra incluye un producto físico. Lo enviamos por Correo Argentino a tu domicilio y te avisamos cuando lo despachemos.",
+                _ => "Tu compra incluye un producto físico — en breve nos ponemos en contacto para coordinar la entrega.",
+            };
             var notaEnvio = hayFisico
-                ? $"<p style=\"color:{ColorGold};font-family:{FontBody};font-size:13px;background:rgba(166,136,62,0.08);border-radius:8px;padding:12px 14px;\">Tu compra incluye un producto físico — en breve nos ponemos en contacto para coordinar la entrega.</p>"
+                ? $"<p style=\"color:{ColorGold};font-family:{FontBody};font-size:13px;background:rgba(166,136,62,0.08);border-radius:8px;padding:12px 14px;\">{textoEnvio}</p>"
                 : "";
 
             var html = $@"
@@ -202,18 +212,37 @@ namespace miastral_api.Services
             // Mismo orden de campos que pide el formulario web de Correo Argentino,
             // para que Vale pueda ir copiando uno abajo del otro sin buscar nada.
             // Va en una caja resaltada (tono arena) para que salte a la vista.
+            string Fila(string etiqueta, string? valor) =>
+                $"<tr><td style=\"padding:4px 0;color:{ColorGold};font-size:13px;width:140px;\">{etiqueta}</td><td style=\"padding:4px 0;color:{ColorTextDark};\">{(string.IsNullOrWhiteSpace(valor) ? "—" : valor)}</td></tr>";
+
+            var wp = orden.EnvioWhatsapp ?? orden.EnvioTelefono;
+            var filasEnvio = orden.EnvioTipoEntrega == "sucursal"
+                // Retiro en sucursal: nombre, mail, WhatsApp, localidad/provincia y sucursal.
+                ? Fila("Nombre completo", orden.EnvioNombre)
+                  + Fila("Mail", orden.EnvioEmail)
+                  + Fila("WhatsApp", wp)
+                  + Fila("Localidad y provincia", $"{orden.EnvioLocalidad ?? orden.EnvioCiudad}, {orden.EnvioProvincia}")
+                  + Fila("Sucursal de retiro", orden.EnvioSucursalNombre)
+                // Domicilio (o pedidos viejos sin tipo): los datos completos de la dirección.
+                : Fila("Destinatario", orden.EnvioNombre)
+                  + Fila("WhatsApp", wp)
+                  + Fila("Email", orden.EnvioEmail)
+                  + Fila("Calle y número", orden.EnvioCalle)
+                  + Fila("Ciudad", orden.EnvioCiudad)
+                  + Fila("Provincia", orden.EnvioProvincia)
+                  + Fila("Código postal", orden.EnvioCP);
+
             var datosEnvio = $@"
 <div style=""background:rgba(180,164,132,0.1);border:1px solid rgba(180,164,132,0.3);border-radius:10px;padding:18px 20px;margin:10px 0;"">
-  <table style=""width:100%;border-collapse:collapse;"">
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;width:140px;"">Destinatario</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioNombre ?? "—"}</td></tr>
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Teléfono</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioTelefono ?? "—"}</td></tr>
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Email</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioEmail ?? "—"}</td></tr>
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Calle y número</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioCalle ?? "—"}</td></tr>
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Ciudad</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioCiudad ?? "—"}</td></tr>
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Provincia</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioProvincia ?? "—"}</td></tr>
-    <tr><td style=""padding:4px 0;color:{ColorGold};font-size:13px;"">Código postal</td><td style=""padding:4px 0;color:{ColorTextDark};"">{orden.EnvioCP ?? "—"}</td></tr>
-  </table>
+  <table style=""width:100%;border-collapse:collapse;"">{filasEnvio}</table>
 </div>";
+
+            // Estado de la carga automática en MiCorreo.
+            var estadoMiCorreo = orden.EnvioTransportista != "micorreo" || orden.Items.All(i => i.Producto?.Tipo != "producto")
+                ? ""
+                : orden.EnvioMiCorreoEstado == "importado"
+                    ? $"<div style=\"background:rgba(124,140,91,0.12);border-radius:8px;padding:12px 14px;color:{ColorSage};font-size:13px;margin:8px 0;\">✓ El envío ya quedó cargado en MiCorreo. Solo falta que lo despaches.</div>"
+                    : $"<div style=\"background:rgba(193,123,84,0.12);border-radius:8px;padding:12px 14px;color:{ColorTerracotta};font-size:13px;margin:8px 0;\">No pudimos cargar el envío solo{(string.IsNullOrEmpty(orden.EnvioMiCorreoEstado) ? "" : $" ({orden.EnvioMiCorreoEstado})")}. Podés reintentar desde el panel admin → Órdenes, o cargarlo a mano con estos datos.</div>";
 
             var pesos = orden.Items
                 .Where(i => i.Producto?.PesoGramos != null)
@@ -238,6 +267,7 @@ namespace miastral_api.Services
       {string.Join("", pesos)}
 
       <div style=""font-family:{FontBody};font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:{ColorBlue};margin-top:24px;margin-bottom:4px;"">Datos para Correo Argentino</div>
+      {estadoMiCorreo}
       {datosEnvio}
 
       <div style=""color:{ColorTextMute};font-size:12px;margin-top:16px;"">También podés ver este pedido y copiar estos datos con un clic desde el panel admin → Órdenes.</div>

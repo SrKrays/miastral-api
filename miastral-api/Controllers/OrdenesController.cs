@@ -15,11 +15,15 @@ namespace miastral_api.Controllers
     {
         private readonly MiastralContext _db;
         private readonly AndreaniShippingService _andreani;
+        private readonly EnvioCotizadorService _cotizador;
+        private readonly MiCorreoService _micorreo;
 
-        public OrdenesController(MiastralContext db, AndreaniShippingService andreani)
+        public OrdenesController(MiastralContext db, AndreaniShippingService andreani, EnvioCotizadorService cotizador, MiCorreoService micorreo)
         {
             _db = db;
             _andreani = andreani;
+            _cotizador = cotizador;
+            _micorreo = micorreo;
         }
 
         private int UsuarioIdActual =>
@@ -54,6 +58,11 @@ namespace miastral_api.Controllers
                 EnvioCiudad = request.Envio?.Ciudad,
                 EnvioProvincia = request.Envio?.Provincia,
                 EnvioCP = request.Envio?.Cp,
+                EnvioTipoEntrega = request.Envio?.TipoEntrega,
+                EnvioSucursalCodigo = request.Envio?.SucursalCodigo,
+                EnvioLocalidad = request.Envio?.Localidad,
+                EnvioWhatsapp = request.Envio?.Whatsapp,
+                EnvioProvinciaCodigo = request.Envio?.ProvinciaCodigo?.ToUpperInvariant(),
             };
 
             decimal total = 0;
@@ -96,6 +105,27 @@ namespace miastral_api.Controllers
             if (errores.Count > 0)
                 return BadRequest(new { message = string.Join(" ", errores) });
 
+            // Envío por Correo Argentino: se recotiza siempre acá en el servidor
+            // (nunca confiamos en un costo que mande el navegador) y se suma al total.
+            var envio = await _cotizador.CotizarAsync(
+                request.Items.Select(i => (i.ProductoId, i.Cantidad)),
+                request.Envio?.TipoEntrega, request.Envio?.ProvinciaCodigo?.ToUpperInvariant(),
+                request.Envio?.Cp, request.Envio?.SucursalCodigo);
+
+            if (!envio.Ok)
+                return BadRequest(new { message = envio.Mensaje });
+
+            if (envio.RequiereEnvio && envio.Configurado)
+            {
+                if (envio.Costo == null)
+                    return BadRequest(new { message = "Elegí si querés envío a domicilio o retiro en sucursal para calcular el costo." });
+
+                orden.EnvioTransportista = "micorreo";
+                orden.EnvioCosto = envio.Costo;
+                orden.EnvioSucursalNombre = envio.SucursalNombre;
+                total += envio.Costo.Value;
+            }
+
             orden.Total = total;
 
             _db.Ordenes.Add(orden);
@@ -130,6 +160,13 @@ namespace miastral_api.Controllers
                     o.EnvioCP,
                     o.EnvioTransportista,
                     o.EnvioNumeroAndreani,
+                    o.EnvioTipoEntrega,
+                    o.EnvioSucursalCodigo,
+                    o.EnvioSucursalNombre,
+                    o.EnvioLocalidad,
+                    o.EnvioWhatsapp,
+                    o.EnvioProvinciaCodigo,
+                    o.EnvioMiCorreoEstado,
                     o.EnvioCosto,
                     o.EnvioEtiquetaUrl,
                     Comprador = o.Usuario == null ? null : new { o.Usuario.Nombre, o.Usuario.Apellido, o.Usuario.Email },
@@ -277,6 +314,35 @@ namespace miastral_api.Controllers
             return Ok(new { estado });
         }
 
+        // POST api/ordenes/5/importar-micorreo — solo admin. Reintenta cargar el
+        // envío en MiCorreo (por si falló el automático al pagarse la orden).
+        [HttpPost("{id}/importar-micorreo")]
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> ImportarMiCorreo(int id)
+        {
+            var orden = await _db.Ordenes
+                .Include(o => o.Items).ThenInclude(i => i.Producto)
+                .Include(o => o.Usuario)
+                .FirstOrDefaultAsync(o => o.Id == id);
+            if (orden == null) return NotFound(new { message = "Orden no encontrada" });
+            if (orden.EnvioTransportista != "micorreo")
+                return BadRequest(new { message = "Esta orden no tiene un envío de Correo Argentino." });
+            if (!_micorreo.CredencialesCargadas)
+                return BadRequest(new { message = "Todavía no están cargadas las credenciales de MiCorreo en Render." });
+
+            var (bulto, faltantes) = MiCorreoService.ArmarBulto(
+                orden.Items.Where(i => i.Producto != null).Select(i => (i.Producto!, i.Cantidad)));
+            if (bulto == null)
+                return BadRequest(new { message = faltantes != null ? $"Faltan peso/medidas en: {faltantes}." : "La orden no tiene productos físicos." });
+
+            var (ok, mensaje) = await _micorreo.ImportarEnvioAsync(orden, bulto, orden.Total - (orden.EnvioCosto ?? 0));
+            orden.EnvioMiCorreoEstado = ok ? "importado" : $"error: {mensaje}";
+            await _db.SaveChangesAsync();
+
+            if (!ok) return StatusCode(502, new { message = mensaje });
+            return Ok(new { orden.EnvioMiCorreoEstado });
+        }
+
         // DELETE api/ordenes/5 — solo admin. Borrado real de la orden.
         [HttpDelete("{id}")]
         [Authorize(Roles = "admin")]
@@ -340,6 +406,11 @@ namespace miastral_api.Controllers
         public string? Ciudad { get; set; }
         public string? Provincia { get; set; }
         public string? Cp { get; set; }
+        public string? TipoEntrega { get; set; }      // "domicilio" | "sucursal"
+        public string? SucursalCodigo { get; set; }
+        public string? Localidad { get; set; }
+        public string? Whatsapp { get; set; }
+        public string? ProvinciaCodigo { get; set; }  // letra MiCorreo (B, C, X...)
     }
 
     public class ActualizarEstadoRequest

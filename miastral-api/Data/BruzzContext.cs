@@ -88,6 +88,13 @@ namespace miastral_api.Data
                 e.Property(x => x.EnvioNumeroAndreani).HasColumnName("envio_numero_andreani");
                 e.Property(x => x.EnvioCosto).HasColumnName("envio_costo");
                 e.Property(x => x.EnvioEtiquetaUrl).HasColumnName("envio_etiqueta_url");
+                e.Property(x => x.EnvioTipoEntrega).HasColumnName("envio_tipo_entrega");
+                e.Property(x => x.EnvioSucursalCodigo).HasColumnName("envio_sucursal_codigo");
+                e.Property(x => x.EnvioSucursalNombre).HasColumnName("envio_sucursal_nombre");
+                e.Property(x => x.EnvioLocalidad).HasColumnName("envio_localidad");
+                e.Property(x => x.EnvioWhatsapp).HasColumnName("envio_whatsapp");
+                e.Property(x => x.EnvioProvinciaCodigo).HasColumnName("envio_provincia_codigo");
+                e.Property(x => x.EnvioMiCorreoEstado).HasColumnName("envio_micorreo_estado");
                 e.HasOne(x => x.Usuario).WithMany().HasForeignKey(x => x.UsuarioId).OnDelete(DeleteBehavior.Restrict);
                 e.HasMany(x => x.Items).WithOne(x => x.Orden).HasForeignKey(x => x.OrdenId).OnDelete(DeleteBehavior.Cascade);
             });
